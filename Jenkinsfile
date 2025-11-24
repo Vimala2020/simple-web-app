@@ -1,15 +1,21 @@
 #!/usr/bin/env groovy
 
 pipeline {
-    agent any
-
-    // keep history of builds
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '50', artifactNumToKeepStr: '5'))
+    agent {
+        docker { 
+            image 'node:20'   // Node.js environment
+            args '-u root:root -v /var/run/docker.sock:/var/run/docker.sock' // to allow Docker build/run
+        }
     }
 
     environment {
-        PUBLISH = 'false'
+        PUBLISH = 'false' // change to 'true' to enable docker push
+        IMAGE_NAME = 'simple-web-app'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '50', artifactNumToKeepStr: '5'))
+        timeout(time: 60, unit: 'MINUTES')
     }
 
     stages {
@@ -25,7 +31,7 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
                 sh 'npm test'
             }
@@ -39,8 +45,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def imageTag = "${env.BUILD_NUMBER}"
-                    sh "docker build -t simple‑web‑app:${imageTag} ."
+                    sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."
                 }
             }
         }
@@ -48,21 +53,21 @@ pipeline {
         stage('Run Container') {
             steps {
                 script {
-                    def imageTag = "${env.BUILD_NUMBER}"
-                    sh "docker run -d --name webapp_${imageTag} -p 3000:3000 simple‑web‑app:${imageTag}"
+                    sh "docker run -d --name ${IMAGE_NAME}_${env.BUILD_NUMBER} -p 3000:3000 ${IMAGE_NAME}:${env.BUILD_NUMBER}"
                 }
             }
         }
 
-        stage('Publish (optional)') {
+        stage('Optional Publish') {
             when {
                 expression { env.PUBLISH == 'true' }
             }
             steps {
                 script {
-                    def imageTag = "${env.BUILD_NUMBER}"
-                    sh "docker tag simple‑web‑app:${imageTag} yourdockerhubuser/simple‑web‑app:${imageTag}"
-                    sh "docker push yourdockerhubuser/simple‑web‑app:${imageTag}"
+                    sh """
+                        docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} yourdockerhubuser/${IMAGE_NAME}:${env.BUILD_NUMBER}
+                        docker push yourdockerhubuser/${IMAGE_NAME}:${env.BUILD_NUMBER}
+                    """
                 }
             }
         }
@@ -70,10 +75,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build and deployment succeeded"
+            echo "✅ Build, test, and deployment completed successfully!"
         }
         failure {
-            echo "❌ Build failed"
+            echo "❌ Build or tests failed."
         }
         always {
             cleanWs()
