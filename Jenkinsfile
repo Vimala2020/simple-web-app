@@ -20,6 +20,13 @@ def envVars = ['PUBLISH=true']
 // and disable images publication out of caution
 def SIMULATE_LTS_BUILD = false
 
+// Dummy infra object for local builds
+def infra = [
+    isTrusted: { -> false },
+    withDockerCredentials: { closure -> closure.call() }
+]
+
+
 if (SIMULATE_LTS_BUILD) {
     envVars = [
         'PUBLISH=false',
